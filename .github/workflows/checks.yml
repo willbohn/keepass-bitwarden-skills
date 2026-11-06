@@ -1,0 +1,58 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  skills-and-secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out skills
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the reference validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: agentskills/agentskills
+          ref: 83021e2be457a9b6679148719c1f6074f0ad975e
+          path: .checks/agent-skills
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Validate skill packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          validator="$GITHUB_WORKSPACE/.checks/agent-skills/skills-ref"
+          uv sync --frozen --no-dev --project "$validator"
+          for skill in "$GITHUB_WORKSPACE"/skills/*; do
+            uv run --frozen --no-dev --project "$validator" skills-ref validate "$skill"
+          done
+          git diff --check
+      - name: Scan history for secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$archive" | sha256sum --check -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --log-opts="--all" .
