@@ -1,0 +1,17 @@
+# Development tooling; skills have no runtime environment.
+.venv/
+.checks/
+__pycache__/
+
+# Avoid accidental staging. This is not a data-protection boundary.
+.env
+.env.*
+*.kdbx
+*.keyx
+*.key
+*.pem
+*.p12
+*.pfx
+*.gpg
+*.age
+vault-export*
